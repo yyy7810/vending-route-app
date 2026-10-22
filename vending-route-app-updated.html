@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#176b55">
+<title>自販機ルート管理</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f6f5;color:#202a27;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+header{background:#176b55;color:white;padding:18px}
+header h1{font-size:22px;margin:0 0 5px}
+nav{display:flex;background:white;position:sticky;top:0;z-index:2;box-shadow:0 1px 4px #0001}
+nav button{flex:1;border:0;background:white;padding:13px 2px;font-size:13px}
+nav button.active{color:#176b55;border-bottom:3px solid #176b55;font-weight:bold}
+main{padding:12px;max-width:700px;margin:auto}
+.panel{background:white;padding:14px;border-radius:13px;margin-bottom:12px}
+h2{font-size:18px;margin:0 0 12px}
+label{display:block;font-size:13px;margin:10px 0 5px}
+input,textarea,select{width:100%;padding:11px;border:1px solid #ccd5d1;border-radius:8px;font-size:16px;background:white;color:inherit}
+textarea{min-height:70px}
+button,.link{cursor:pointer}
+button:disabled{opacity:.4;cursor:default}
+.primary{background:#176b55;color:white;border:0;border-radius:9px;padding:12px;font-size:15px;font-weight:bold}
+.secondary{background:#e8f1ed;color:#176b55;border:0;border-radius:8px;padding:9px}
+.danger{color:#a22;background:#fff0f0;border:0;border-radius:8px;padding:9px}
+.actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.actions button{font-size:13px}
+.machine,.stop{border:1px solid #e0e7e3;border-radius:10px;padding:12px;margin-top:9px}
+.muted{font-size:13px;color:#66736d;line-height:1.5}
+.stop.done{background:#edf7ef;opacity:.85}
+.stop.done .stopname{text-decoration:line-through}
+.stoprow{display:flex;gap:10px;align-items:flex-start}
+.stoprow input[type=checkbox]{width:23px;height:23px;margin-top:2px;flex:0 0 23px}
+.stopinfo{flex:1;min-width:0}
+.stopname{font-weight:bold}
+a{color:#176b55}
+.hidden{display:none!important}
+.stat{font-size:15px;font-weight:bold;margin:10px 0}
+.smallinput{max-width:180px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.pill{display:inline-block;background:#edf3f0;border-radius:99px;padding:4px 8px;font-size:12px;margin:3px 4px 0 0}
+footer{padding:8px 0 28px;color:#68746e;font-size:12px}
+hr{border:0;border-top:1px solid #e4eae7;margin:14px 0}
+@media(max-width:380px){nav button{font-size:12px}.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><h1>自販機ルート管理</h1><div id="date"></div></header>
+<nav>
+<button class="active" data-tab="route">今日のルート</button>
+<button data-tab="machines">自販機台帳</button>
+<button data-tab="settings">設定・バックアップ</button>
+</nav>
+<main>
+<section id="route">
+  <div class="panel">
+    <h2>今日の訪問先</h2>
+    <label>今日の日付</label><input type="date" id="routeDate">
+    <div class="stat" id="progress"></div>
+    <label>台帳から訪問先を追加</label><select id="machineSelect"></select>
+    <div class="actions">
+      <button class="primary" id="addStop">ルートに追加</button>
+      <button class="secondary" id="optimizeRoute">訪問順を自動提案</button>
+      <button class="secondary" id="resetChecks">訪問済みをリセット</button>
+    </div>
+    <p class="muted">自動提案は登録した緯度・経度を使い、直線距離が短くなる順を計算します。道路の渋滞・一方通行・実走行距離までは計算しません。住所だけの自販機は自動計算から除外される場合があります。</p>
+    <div class="actions"><button class="secondary" id="getLocation">現在地を出発地点に使う</button><button class="secondary" id="clearLocation">現在地設定を解除</button></div>
+    <div id="locationStatus" class="muted">出発地点：設定なし</div>
+  </div>
+  <div class="panel">
+    <h2>訪問リスト</h2><div id="stops"></div>
+    <div class="actions"><button class="primary" id="allMap">Googleマップでルートを見る</button></div>
+    <p class="muted">Googleマップでは道路に沿ったルートを確認できます。自動提案後も、必要なら↑↓で順番を調整してください。</p>
+  </div>
+</section>
+<section id="machines" class="hidden">
+  <div class="panel">
+    <h2 id="formTitle">自販機を登録</h2><input id="editId" type="hidden">
+    <label>会社名・設置先名 *</label><input id="company" placeholder="例：〇〇商店">
+    <label>自販機番号</label><input id="number" placeholder="例：A-012">
+    <label>住所 *</label><input id="address" placeholder="都道府県から入力">
+    <p class="muted">緯度・経度は任意です。地図アプリなどで確認した座標を入力すると、自動訪問順の精度が上がります。</p>
+    <div class="grid2">
+      <div><label>緯度（任意）</label><input id="lat" type="number" step="any" placeholder="例：34.745"></div>
+      <div><label>経度（任意）</label><input id="lng" type="number" step="any" placeholder="例：134.188"></div>
+    </div>
+    <label>補充時の注意事項</label><textarea id="notes" placeholder="例：裏口から入る、鍵が必要"></textarea>
+    <div class="actions"><button class="primary" id="saveMachine">保存する</button><button class="secondary" id="cancelEdit">入力をクリア</button></div>
+  </div>
+  <div class="panel"><h2>登録済みの自販機</h2><input id="search" placeholder="会社名・番号・住所で検索"><div id="machineList"></div></div>
+</section>
+<section id="settings" class="hidden">
+  <div class="panel">
+    <h2>会社・倉庫の住所</h2><label>出発・帰着地点</label><input id="depot" placeholder="会社や倉庫の住所">
+    <div class="grid2">
+      <div><label>倉庫の緯度（任意）</label><input id="depotLat" type="number" step="any" placeholder="緯度"></div>
+      <div><label>倉庫の経度（任意）</label><input id="depotLng" type="number" step="any" placeholder="経度"></div>
+    </div>
+    <button class="primary" id="saveDepot" style="margin-top:10px">住所・座標を保存</button>
+  </div>
+  <div class="panel">
+    <h2>データのバックアップ</h2><p class="muted">台帳・ルート・訪問記録・設定をJSONに保存できます。変更前に必ずバックアップしてください。</p>
+    <div class="actions"><button class="primary" id="exportData">バックアップを保存</button><button class="secondary" id="importButton">バックアップを復元</button><input class="hidden" id="importFile" type="file" accept=".json,application/json"></div>
+    <p class="muted">復元すると現在のデータが置き換わります。復元前に現在のデータもバックアップしてください。</p>
+  </div>
+  <div class="panel"><h2>データについて</h2><p class="muted">データは端末・ブラウザごとに保存され、自動同期されません。iPadとiPhoneで更新した場合はバックアップ・復元で移してください。顧客情報入りのバックアップは公開GitHubにアップロードしないでください。</p></div>
+</section>
+<footer>試作品 v0.2｜端末内保存・JSONバックアップ対応</footer>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const KEY="vending-route-prototype-v1";
+const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
+let data=load();
+let currentPosition=null;
+function load(){
+ try{
+  const old=JSON.parse(localStorage.getItem(KEY));
+  if(old&&Array.isArray(old.machines)&&old.routes&&typeof old.routes==="object"){
+   if(!old.depot)old.depot="";
+   return old;
+  }
+ }catch(e){}
+ return {machines:[],routes:{},depot:"",depotLat:null,depotLng:null};
+}
+function save(){localStorage.setItem(KEY,JSON.stringify(data));render()}
+function route(){const d=$("routeDate").value||today();if(!data.routes[d])data.routes[d]=[];return data.routes[d]}
+function machine(id){return data.machines.find(m=>m.id===id)}
+function esc(s=""){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function showTab(tab){["route","machines","settings"].forEach(t=>{$(t).classList.toggle("hidden",t!==tab);document.querySelector('[data-tab="'+t+'"]').classList.toggle("active",t===tab)});render()}
+document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>showTab(b.dataset.tab)));
+$("date").textContent=new Date().toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"short"});
+$("routeDate").value=today();$("routeDate").addEventListener("change",render);
+function clearForm(){["editId","company","number","address","lat","lng","notes"].forEach(id=>$(id).value="");$("formTitle").textContent="自販機を登録"}
+$("cancelEdit").onclick=clearForm;
+$("saveMachine").onclick=()=>{
+ const company=$("company").value.trim(),address=$("address").value.trim();
+ if(!company||!address){alert("会社名・設置先名と住所を入力してください");return}
+ const latText=$("lat").value.trim(),lngText=$("lng").value.trim();
+ const lat=latText===""?null:Number(latText),lng=lngText===""?null:Number(lngText);
+ if((latText!==""&&!Number.isFinite(lat))||(lngText!==""&&!Number.isFinite(lng))||
+    (lat!==null&&(lat < -90||lat > 90))||(lng!==null&&(lng < -180||lng > 180))||
+    ((lat===null)!==(lng===null))){alert("緯度・経度は両方入力するか、両方空欄にしてください。値も確認してください。");return}
+ const id=$("editId").value,old=id?machine(id):null;
+ const item={...(old||{}),id:id||(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random()),company,number:$("number").value.trim(),address,lat,lng,notes:$("notes").value.trim()};
+ if(id){const i=data.machines.findIndex(m=>m.id===id);if(i>=0)data.machines[i]=item}else data.machines.push(item);
+ clearForm();save();showTab("machines")
+};
+$("search").addEventListener("input",render);
+function editMachine(id){const m=machine(id);if(!m)return;$("editId").value=m.id;$("company").value=m.company||"";$("number").value=m.number||"";$("address").value=m.address||"";$("lat").value=m.lat??"";$("lng").value=m.lng??"";$("notes").value=m.notes||"";$("formTitle").textContent="自販機を編集";window.scrollTo(0,0)}
+function deleteMachine(id){if(!confirm("この自販機を削除しますか？"))return;data.machines=data.machines.filter(m=>m.id!==id);Object.values(data.routes).forEach(r=>{if(Array.isArray(r))r.splice(0,r.length,...r.filter(s=>s.id!==id))});save()}
+function addStop(){const id=$("machineSelect").value;if(!id){alert("先に台帳へ自販機を登録してください");return}const r=route();if(r.some(s=>s.id===id)){alert("この訪問先は追加済みです");return}r.push({id,done:false,log:{}});save()}
+$("addStop").onclick=addStop;
+$("resetChecks").onclick=()=>{if(!confirm("この日の訪問済みチェックをすべて解除しますか？"))return;route().forEach(s=>s.done=false);save()};
+function moveStop(index,delta){const r=route(),to=index+delta;if(to<0||to>=r.length)return;[r[index],r[to]]=[r[to],r[index]];save()}
+function toggleDone(id,checked){const s=route().find(s=>s.id===id);if(s){s.done=checked;if(!s.log)s.log={};if(checked&&!s.log.completedAt)s.log.completedAt=new Date().toISOString()}save()}
+function removeStop(id){const r=route(),i=r.findIndex(s=>s.id===id);if(i>=0)r.splice(i,1);save()}
+function mapUrl(address){return "https://www.google.com/maps/dir/?api=1&destination="+encodeURIComponent(address)}
+function haversine(a,b){const rad=x=>x*Math.PI/180,R=6371,dLat=rad(b.lat-a.lat),dLng=rad(b.lng-a.lng);const q=Math.sin(dLat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;return 2*R*Math.asin(Math.sqrt(q))}
+function coord(m){return Number.isFinite(Number(m.lat))&&m.lat!==null&&m.lat!==""&&Number.isFinite(Number(m.lng))&&m.lng!==null&&m.lng!==""?{lat:Number(m.lat),lng:Number(m.lng)}:null}
+function optimize(){
+ const r=route();if(r.length<2){alert("訪問先を2件以上追加してください");return}
+ const records=r.map((s,index)=>({s,index,m:machine(s.id)})).filter(x=>x.m);
+ const known=records.filter(x=>coord(x.m)),unknown=records.filter(x=>!coord(x.m));
+ if(known.length<2){alert("自動提案には、緯度・経度が登録された自販機が2件以上必要です。台帳で緯度・経度を入力してください。住所だけでは正確な位置を自動取得できません。");return}
+ let start=currentPosition||(Number.isFinite(Number(data.depotLat))&&data.depotLat!==null&&data.depotLat!==""&&Number.isFinite(Number(data.depotLng))&&data.depotLng!==null&&data.depotLng!==""?{lat:Number(data.depotLat),lng:Number(data.depotLng)}:null);
+ if(!start){const first=known.find(x=>x.s.done===false)||known[0];start=coord(first.m)}
+ const remaining=[...known],ordered=[];
+ let here=start;
+ while(remaining.length){let best=0,bestD=Infinity;for(let i=0;i<remaining.length;i++){const c=coord(remaining[i].m),d=haversine(here,c);if(d<bestD){bestD=d;best=i}}const next=remaining.splice(best,1)[0];ordered.push(next.s);here=coord(next.m)}
+ // Keep non-geocoded locations after coordinate-based stops; never discard existing entries.
+ const final=[...ordered,...unknown.map(x=>x.s)];
+ const routeById=new Map(final.map(s=>[s.id,s]));
+ const stableUnknown=unknown.map(x=>x.s);
+ r.splice(0,r.length,...final);
+ save();
+ alert(`訪問順を提案しました。座標あり ${known.length}件を直線距離で並べ、座標なし ${stableUnknown.length}件は後ろに配置しました。必要なら↑↓で調整してください。`)
+}
+$("optimizeRoute").onclick=optimize;
+$("getLocation").onclick=()=>{
+ if(!navigator.geolocation){alert("このブラウザでは現在地を取得できません。台帳の座標を入力してください。");return}
+ $("locationStatus").textContent="現在地を取得中…";
+ navigator.geolocation.getCurrentPosition(pos=>{currentPosition={lat:pos.coords.latitude,lng:pos.coords.longitude};$("locationStatus").textContent="出発地点：今回の画面で現在地を使用中（保存はされません）"},err=>{$("locationStatus").textContent="現在地を取得できませんでした";alert("現在地を取得できませんでした。位置情報の許可設定を確認するか、倉庫の座標を登録してください。")},{enableHighAccuracy:true,timeout:10000,maximumAge:60000})
+};
+$("clearLocation").onclick=()=>{currentPosition=null;$("locationStatus").textContent="出発地点：設定なし"};
+function render(){
+ const r=route(),done=r.filter(s=>s.done).length;
+ $("progress").textContent=`訪問済み ${done} / ${r.length} 件`;
+ $("machineSelect").innerHTML=data.machines.map(m=>`<option value="${esc(m.id)}">${esc(m.company)} ${esc(m.number||"")} — ${esc(m.address)}</option>`).join("")||'<option value="">台帳に自販機がありません</option>';
+ $("stops").innerHTML=r.map((s,i)=>{const m=machine(s.id);if(!m)return "";const log=s.log||{};return `<div class="stop ${s.done?"done":""}"><div class="stoprow"><input type="checkbox" aria-label="訪問済み" ${s.done?"checked":""} data-done="${esc(s.id)}"><div class="stopinfo"><div class="stopname">${i+1}. ${esc(m.company)}</div><div>${esc(m.number||"番号未登録")}</div><div class="muted">${esc(m.address)}</div>${m.notes?`<p class="muted">${esc(m.notes)}</p>`:""}${log.stock?`<span class="pill">補充数：${esc(log.stock)}</span>`:""}${log.status?`<span class="pill">状況：${esc(log.status)}</span>`:""}${log.memo?`<p class="muted">作業メモ：${esc(log.memo)}</p>`:""}<div class="actions"><a href="${mapUrl(m.address)}" target="_blank" rel="noopener">ナビを開く</a><button class="secondary" data-log="${esc(s.id)}">作業記録</button><button class="secondary" data-up="${i}" ${i===0?"disabled":""}>↑</button><button class="secondary" data-down="${i}" ${i===r.length-1?"disabled":""}>↓</button><button class="danger" data-remove="${esc(s.id)}">ルートから削除</button></div><div id="log-${esc(s.id)}" class="hidden"><label>補充数（任意）</label><input data-stock="${esc(s.id)}" type="number" min="0" inputmode="numeric" value="${esc(log.stock??"")}" placeholder="例：12"><label>作業状況</label><select data-status="${esc(s.id)}"><option value="">未選択</option><option value="補充完了" ${log.status==="補充完了"?"selected":""}>補充完了</option><option value="売切れ" ${log.status==="売切れ"?"selected":""}>売切れ</option><option value="故障" ${log.status==="故障"?"selected":""}>故障</option><option value="訪問不可" ${log.status==="訪問不可"?"selected":""}>訪問不可</option><option value="補充不要" ${log.status==="補充不要"?"selected":""}>補充不要</option></select><label>作業メモ</label><textarea data-memo="${esc(s.id)}" placeholder="作業内容など">${esc(log.memo||"")}</textarea><div class="actions"><button class="primary" data-save-log="${esc(s.id)}">作業記録を保存</button></div></div></div></div></div>`}).join("")||'<p class="muted">訪問先がまだありません。</p>';
+ const q=$("search").value.trim().toLowerCase(),filtered=data.machines.filter(m=>[m.company,m.number,m.address,m.notes].join(" ").toLowerCase().includes(q));
+ $("machineList").innerHTML=filtered.map(m=>`<div class="machine"><strong>${esc(m.company)}</strong><div>${esc(m.number||"番号未登録")}</div><div class="muted">${esc(m.address)}</div>${m.lat!=null&&m.lng!=null?`<div class="muted">座標：${esc(m.lat)}, ${esc(m.lng)}</div>`:""}${m.notes?`<p class="muted">${esc(m.notes)}</p>`:""}<div class="actions"><button class="secondary" data-edit="${esc(m.id)}">編集</button><button class="secondary" data-nav="${esc(m.id)}">地図で確認</button><button class="danger" data-delete="${esc(m.id)}">削除</button></div></div>`).join("")||'<p class="muted">該当する自販機がありません。</p>';
+ $("depot").value=data.depot||"";$("depotLat").value=data.depotLat??"";$("depotLng").value=data.depotLng??"";
+ $("stops").querySelectorAll("[data-done]").forEach(el=>el.onchange=()=>toggleDone(el.dataset.done,el.checked));
+ $("stops").querySelectorAll("[data-up]").forEach(el=>el.onclick=()=>moveStop(Number(el.dataset.up),-1));
+ $("stops").querySelectorAll("[data-down]").forEach(el=>el.onclick=()=>moveStop(Number(el.dataset.down),1));
+ $("stops").querySelectorAll("[data-remove]").forEach(el=>el.onclick=()=>removeStop(el.dataset.remove));
+ $("stops").querySelectorAll("[data-log]").forEach(el=>el.onclick=()=>{$("log-"+el.dataset.log).classList.toggle("hidden")});
+ $("stops").querySelectorAll("[data-save-log]").forEach(el=>el.onclick=()=>{const s=route().find(x=>x.id===el.dataset.saveLog);if(!s)return;if(!s.log)s.log={};s.log.stock=$("stops").querySelector(`[data-stock="${CSS.escape(s.id)}"]`).value;s.log.status=$("stops").querySelector(`[data-status="${CSS.escape(s.id)}"]`).value;s.log.memo=$("stops").querySelector(`[data-memo="${CSS.escape(s.id)}"]`).value.trim();s.log.updatedAt=new Date().toISOString();save();alert("作業記録を保存しました")});
+ $("machineList").querySelectorAll("[data-edit]").forEach(el=>el.onclick=()=>editMachine(el.dataset.edit));
+ $("machineList").querySelectorAll("[data-delete]").forEach(el=>el.onclick=()=>deleteMachine(el.dataset.delete));
+ $("machineList").querySelectorAll("[data-nav]").forEach(el=>el.onclick=()=>{const m=machine(el.dataset.nav);if(m)window.open(mapUrl(m.address),"_blank","noopener")});
+}
+$("saveDepot").onclick=()=>{
+ const latText=$("depotLat").value.trim(),lngText=$("depotLng").value.trim();
+ const lat=latText===""?null:Number(latText),lng=lngText===""?null:Number(lngText);
+ if((latText!==""&&!Number.isFinite(lat))||(lngText!==""&&!Number.isFinite(lng))||(lat!==null&&(lat < -90||lat > 90))||(lng!==null&&(lng < -180||lng > 180))||((lat===null)!==(lng===null))){alert("倉庫の緯度・経度は両方入力するか、両方空欄にしてください。");return}
+ data.depot=$("depot").value.trim();data.depotLat=lat;data.depotLng=lng;save();alert("出発・帰着地点を保存しました")
+};
+$("allMap").onclick=()=>{
+ const r=route().map(s=>machine(s.id)).filter(Boolean);if(!r.length){alert("訪問先を追加してください");return}
+ const origin=data.depot||r[0].address,destination=data.depot||r[r.length-1].address;
+ const middle=r.slice(data.depot?0:1,data.depot?r.length:r.length-1);
+ const params=new URLSearchParams({api:"1",origin,destination});
+ if(middle.length)params.set("waypoints",middle.map(m=>m.address).join("|"));
+ window.open("https://www.google.com/maps/dir/?"+params.toString(),"_blank","noopener");
+};
+$("exportData").onclick=()=>{
+ const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+ const url=URL.createObjectURL(blob),a=document.createElement("a");
+ a.href=url;a.download="vending-route-backup-"+today()+".json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)
+};
+$("importButton").onclick=()=>$("importFile").click();
+$("importFile").onchange=async e=>{
+ const file=e.target.files[0];if(!file)return;
+ try{
+  const obj=JSON.parse(await file.text());
+  if(!Array.isArray(obj.machines)||!obj.routes||typeof obj.routes!=="object"||Array.isArray(obj.routes))throw new Error("形式が違います");
+  if(!confirm("現在のデータを置き換えて復元しますか？復元前のバックアップはありますか？"))return;
+  const validMachines=obj.machines.every(m=>m&&typeof m.id==="string"&&typeof m.company==="string"&&typeof m.address==="string");
+  if(!validMachines)throw new Error("自販機データの形式が違います");
+  data={...obj,machines:obj.machines,routes:obj.routes,depot:obj.depot||"",depotLat:obj.depotLat??null,depotLng:obj.depotLng??null};
+  save();alert("復元しました")
+ }catch(err){alert("復元できませんでした。バックアップファイルを確認してください。")}
+ finally{e.target.value=""}
+};
+render();
+</script>
+</body>
+</html>
